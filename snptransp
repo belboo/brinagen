@@ -1,0 +1,183 @@
+#!/usr/bin/python3
+
+from __future__ import print_function
+import sys
+import os
+import json
+import shutil
+import argparse
+from signal import signal, SIGPIPE, SIG_DFL
+
+signal(SIGPIPE,SIG_DFL)
+
+def unique(sequence):
+    seen = set()
+    seen_add = seen.add
+    return [x for x in sequence if not (x in seen or seen_add(x))]
+
+def SNPDictLookup(id_list, dict_path, create_new=False, update=False, verb=1):
+    if update:
+        create_new=True
+    
+    if isinstance(id_list, str):
+        id_list = [id_list]
+    elif not isinstance(id_list, list):
+        if verb > 0:
+            print("SNPDic Error: Cannot interpret ID list.")
+
+    if os.path.exists(dict_path):
+        try:
+            with open(dict_path, 'r') as dict_file:
+                snp_dict = json.load(dict_file)
+        except ValueError:
+            if verb > 0:
+                print("SNPDic Error: Failed to load dictionary.")
+            raise
+    elif create_new:
+        if verb > 0: 
+            print('SNPDic: Creating a new dictionary [%s].' % dict_path, file=sys.stderr)
+        snp_dict = {}
+    else:
+        if verb > 0:
+            print('SNPDic Error: Dictionary does not exist.', file=sys.stderr)
+    
+    ds = [snp_id for snp_id in id_list if snp_id not in set(snp_dict)]
+    
+    if ds:
+        ds = unique(ds)
+        
+        if not update:
+            if verb > 0:
+                print("SNPDic Error: IDs not in dictionary.", file=sys.stderr)
+            raise
+        else:
+            if verb > 0:
+                print("SNPDic: New IDs found, updating dictionary.", file=sys.stderr)
+
+        if snp_dict:
+            max_id = max(v[0] for v in snp_dict.values())
+        else:
+            max_id = 0
+            
+        new_snp_dict = dict((e[0],(e[1], e[2])) for e in zip(ds, \
+                            [max_id+1+i for i in range(len(ds))], \
+                            ['SNP'+'%05d'%(max_id+1+i) for i in range(len(ds))]))
+        snp_dict.update(new_snp_dict)
+        
+        if os.path.exists(dict_path):
+            shutil.copyfile(dict_path, dict_path+'.bak')
+            
+        try:
+            with open(dict_path, 'w') as f:
+                json.dump(snp_dict, f)
+        except TypeError:
+            if verb > 0:
+                print("SNPDic Error: Unable to serialize the dictionary.", file=sys.stderr)
+        except:
+            if verb > 0:
+                print("SNPDic Error: Failed to write dictionary.", file=sys.stderr)
+            raise
+    
+    return [snp_dict[e][1] for e in id_list]
+
+#-------------------------------------------------------------------
+# Main part
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Transpose SNP data')
+    parser.add_argument('src', metavar='INPUT_FILE', \
+                        help='source file to read')
+    parser.add_argument('--rm-div', \
+                        dest='rm_div', action='store_true', \
+                        help='remove slashes')
+    parser.add_argument('--skip-ref', \
+                        dest='skip_ref', action='store_true', \
+                        help='skip reference column')
+    parser.add_argument('--sort-samps', \
+                        dest='sort_samps', action='store_true', \
+                        help='sort samples alphabetically by name')
+    parser.add_argument('-t', '--translate-ids', \
+                        dest='translate_ids', action='store_true', \
+                        help='translate IDs based on a dicitonary')
+    parser.add_argument('-d', '--dict', metavar='PATH', \
+                        dest='dict_path', default='snpdict.json', \
+                        help='fragment ID dictionary [snpdict.json]')
+    parser.add_argument('-u', '--update-dict', default='false', \
+                        dest='update_dict', action='store_true', \
+                        help='update fragment dictionary with new IDs')
+    parser.add_argument('--skip-pos', \
+                        dest='skip_pos', action='store_true', \
+                        help='do not print positions')
+    parser.add_argument('--join-pos', \
+                        dest='join_pos', action='store_true', \
+                        help='add positions to IDs')
+    parser.add_argument('--len-pos', metavar='N', type=int, \
+                        dest='len_pos', default=8, \
+                        help='number of digits for position record [8]')
+    parser.add_argument('--id-pos-sep', metavar='SEP', \
+                        dest='id_pos_sep', default='_', \
+                        help='ID and position separator [_]')
+    parser.add_argument('-o', '--out', metavar='FILE', \
+                        dest='out_file', \
+                        help='output to file')
+
+    args = parser.parse_args()
+
+    rm_div = args.rm_div
+    skip_ref = args.skip_ref
+    skip_pos = args.skip_pos
+    sort_samps = args.sort_samps
+    translate_ids = args.translate_ids
+    dict_path = args.dict_path
+    update_dict = args.update_dict
+    join_pos = args.join_pos
+    id_pos_sep = args.id_pos_sep
+    infile = args.src
+    out_file = args.out_file
+    len_pos = args.len_pos
+
+    chrom = []
+    pos = []
+    ref = []
+    data = []
+
+    with open(infile, 'r') as inf:
+        header = inf.readline().strip().split('\t')
+        ref_present = True if header[2] == 'REF' else False
+        ref_shift = 1 if ref_present else 0
+
+        for line in inf:
+            chrom.append(line.strip().split('\t',1)[0])
+            pos.append(line.strip().split('\t',2)[1])
+            if ref_present:
+                ref.append(line.strip().split('\t',3)[2])
+            data.append(line.strip().split('\t')[2+ref_shift:])
+
+    if translate_ids:
+        chrom = SNPDictLookup(chrom, dict_path, update=update_dict)
+
+    if join_pos:
+        chrom = ['{0}{1}{2:>0{3}}'.format(chrom[i], id_pos_sep, pos[i], len_pos) \
+                 for i in range(len(chrom))]
+
+    if sort_samps:
+        samps = header[2+ref_shift:]
+        new_ord = sorted(range(len(samps)), key=lambda i: samps[i])
+        header = header[:2+ref_shift] + [samps[i] for i in new_ord]
+        data = [[loc_set[i] for i in new_ord] for loc_set in data]
+        
+    if rm_div:
+        data = [[comb.replace('/','').replace('|','') for comb in loc_set] for loc_set in data]
+
+    outf = open(out_file, 'w') if out_file else sys.stdout
+
+    print(header[0] + '\t' + '\t'.join(chrom), file=outf)
+
+    if not skip_pos:
+        print(header[1] + '\t' + '\t'.join([str(p) for p in pos]), file=outf)
+            
+    if not skip_ref and ref_present:
+        print(header[2] + '\t' + '\t'.join(ref), file=outf)
+            
+    for i in range(len(data[0])):
+        print(header[i+2+ref_shift] + '\t' + '\t'.join([line[i] for line in data]), file=outf)

@@ -1,0 +1,49 @@
+#!/usr/bin/python3
+
+from __future__ import print_function
+import sys
+import os
+import argparse
+import signal
+from brinagen import snp_dict
+
+if __name__ == '__main__':
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+
+    parser = argparse.ArgumentParser(description='SNP MusDictionary Tool')
+    parser.add_argument('dict_path', metavar='DICTIONARY',
+                        default = 'snpdict.json', nargs='?',
+                        help='fragment ID dictionary file [snpdict.json]')
+    parser.add_argument('-s', '--sort',
+                        dest='sort', default='n',
+                        help='sort by (i)d or (n)ame, possibly (r)eversed [name]')
+    fmt_group = parser.add_mutually_exclusive_group()
+    fmt_group.add_argument('-t', '--tab',
+                        dest='fmt', action='store_const', const='tab', default='tab',
+                        help='tab separated output')
+    fmt_group.add_argument('-c', '--columns',
+                        dest='fmt', action='store_const', const='col',
+                        help='output in columns')
+    fmt_group.add_argument('-csv', '--csv',
+                        dest='fmt', action='store_const', const='csv',
+                        help='csv output')
+    fmt_group.add_argument('-f', '--fmt',
+                        dest='custom_fmt',
+                        metavar='FMT',
+                        help='custom output format as FIELD[align][width]. Fields: X (nid), N (name), I (ID)')
+    parser.add_argument('-v', '--verbosity', action='count',
+                        dest='verbosity', default=0,
+                        help='increase output verbosity')
+
+    args = parser.parse_args()
+
+    dict_path = args.dict_path
+    sort = args.sort
+    verbosity = args.verbosity
+
+    if args.custom_fmt:
+        fmt = args.custom_fmt
+    else:
+        fmt = args.fmt
+
+    snp_dict.snp_dict_list(dict_path, sort=sort, fmt=fmt, verb=verbosity)
