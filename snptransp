@@ -18,7 +18,7 @@ def unique(sequence):
 def SNPDictLookup(id_list, dict_path, create_new=False, update=False, verb=1):
     if update:
         create_new=True
-    
+
     if isinstance(id_list, str):
         id_list = [id_list]
     elif not isinstance(id_list, list):
@@ -34,18 +34,18 @@ def SNPDictLookup(id_list, dict_path, create_new=False, update=False, verb=1):
                 print("SNPDic Error: Failed to load dictionary.")
             raise
     elif create_new:
-        if verb > 0: 
+        if verb > 0:
             print('SNPDic: Creating a new dictionary [%s].' % dict_path, file=sys.stderr)
         snp_dict = {}
     else:
         if verb > 0:
             print('SNPDic Error: Dictionary does not exist.', file=sys.stderr)
-    
+
     ds = [snp_id for snp_id in id_list if snp_id not in set(snp_dict)]
-    
+
     if ds:
         ds = unique(ds)
-        
+
         if not update:
             if verb > 0:
                 print("SNPDic Error: IDs not in dictionary.", file=sys.stderr)
@@ -58,15 +58,15 @@ def SNPDictLookup(id_list, dict_path, create_new=False, update=False, verb=1):
             max_id = max(v[0] for v in snp_dict.values())
         else:
             max_id = 0
-            
+
         new_snp_dict = dict((e[0],(e[1], e[2])) for e in zip(ds, \
                             [max_id+1+i for i in range(len(ds))], \
                             ['SNP'+'%05d'%(max_id+1+i) for i in range(len(ds))]))
         snp_dict.update(new_snp_dict)
-        
+
         if os.path.exists(dict_path):
             shutil.copyfile(dict_path, dict_path+'.bak')
-            
+
         try:
             with open(dict_path, 'w') as f:
                 json.dump(snp_dict, f)
@@ -77,7 +77,7 @@ def SNPDictLookup(id_list, dict_path, create_new=False, update=False, verb=1):
             if verb > 0:
                 print("SNPDic Error: Failed to write dictionary.", file=sys.stderr)
             raise
-    
+
     return [snp_dict[e][1] for e in id_list]
 
 #-------------------------------------------------------------------
@@ -165,19 +165,20 @@ if __name__ == "__main__":
         new_ord = sorted(range(len(samps)), key=lambda i: samps[i])
         header = header[:2+ref_shift] + [samps[i] for i in new_ord]
         data = [[loc_set[i] for i in new_ord] for loc_set in data]
-        
+
     if rm_div:
         data = [[comb.replace('/','').replace('|','') for comb in loc_set] for loc_set in data]
 
     outf = open(out_file, 'w') if out_file else sys.stdout
 
+    header[0] = 'ID'
     print(header[0] + '\t' + '\t'.join(chrom), file=outf)
 
     if not skip_pos:
         print(header[1] + '\t' + '\t'.join([str(p) for p in pos]), file=outf)
-            
+
     if not skip_ref and ref_present:
         print(header[2] + '\t' + '\t'.join(ref), file=outf)
-            
+
     for i in range(len(data[0])):
         print(header[i+2+ref_shift] + '\t' + '\t'.join([line[i] for line in data]), file=outf)
